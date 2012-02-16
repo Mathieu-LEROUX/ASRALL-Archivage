@@ -10,7 +10,7 @@
 \fancyhf{}
 \lhead{2011/2012}
 \rhead{IUT Nancy Charlemagne}
-
+\geometry{hmargin=1cm,vmargin=2cm,lmargin=2cm,rmargin=2cm}
 \lfoot{Mathieu LEROUX}
 \cfoot{Projet tuteuré: Déduplication \\ Licence ASRALL}
 \rfoot{\thepage}
@@ -29,9 +29,37 @@ Le terme inverse de la déduplication est la réhydratation. Elle fait appel à 
 
 Certains outils comme LessFS mise en relation avec un systeme de fichiers ZFS permettent de dédupliquer et de comprésser les blocs de données. Cela permet de gagner encore plus d'octets sur le disque mais nécessite une consommation mémoire et CPU plus importante.
 
+	\chapter*{ZFS}
+	\section{Introduction}
+	Le système de fichier ZFS (Zettabyte File System) a été conçu par Sun en 2005 et est sous licence CDDL.  Il n'était disponible que sous Solaris mais est dévenu récemment disponible sous linux. Il est l'un des systèmes de fichiers les plus intéréssants du marché. En effet, ZFS intégre de nombreux avantages que d'autres n'ont pas. Voici une liste de ses principaux avantages: \\
+	\begin{itemize}
+		 \item Pas de limites pratiques (taille des disques, fichiers, ...)
+		 \item Garantir la sécurité des données (intégrité, disponibilité)
+		 \item Administration simplifiée
+		 \item Gestionnaire de volume intégré
+		 \item Compression
+		 \item Snapshot
+		 \item Duplication
+		 \item Quotas et réservation d’espace
+		 \item Performances élevées
+		 \item Indépendant de l’architecture matérielle\\
+	\end{itemize}
+	ZFS est un système de fichier 128 bits contrairement aux autres systèmes qui sont de 64 bits. Ainsi ses limites sont de 16 milliards de milliards fois plus autant dire qu'il n'a quasi pas de limite. Afin d'optimiser ses performances, ZFS utilise tout l'espace disponible de la RAM pour un créer un énorme cache. Ce procédé s'appelle ARC (Adaptive replacement cache). Il peut poser problème aux autres processus qui teste la mémoire inutilisée avant de ce lancer mais cette mémoire est souvent inutilisée. Il peut etre partagé via le réseau avec d'autres systèmes de fichiers comme nfs ou samba. Ainsi meme depuis des systèmes qui ne le supporte pas, il sera accéssible.\\
+	\section{Stockage}
+	ZFS fonctionne avec un pool. C'est un ensemble de périphériques qui fournissent de l’espace pour le stockage et la duplication des données comme le raid logiciel. \\
+	\includegraphics[width=5cm]{volumes_tradicionais.png}\includegraphics[width=7cm]{armazenamento_pooled_zfs.png}\\
+	Voici les différentes unités de base de stockage de données :\\
+	\begin{itemize}
+		 \item Disques : entiers ou juste une partition
+		 \item Fichiers dans un autre système de fichiers
+		 \item Miroirs : 2 (ou plus) disques, partitions ou fichiers
+		 \item Raid-z : plusieurs disques, variante de RAID-5\\
+	\end{itemize}
+	ZMirror est un miroir classique. Il utilise les mécanismes de checksum pour valider les lectures sur un composant et bascule sur le second si il détecte une erreur puis corrige le composant défaillant (si possible). Le système Raid-z est similaire au procédé Raid 5. Il utilise les checksums (SHA-256 + fletcher) et repose sur le copy on write : supprime le "write-hole".
+
 	\chapter*{Compression}
 	Tout comme la déduplication, la compression est une technique qui permet d'économiser de l'espace de stockage. Chaque fichier est constitué d'une succession de millions de bits 0 ou 1. La compression permet de diminuer le nombre de bit que constitue un fichier en changeant la succession de bit de depart. Suivant l'algorithme de codage utiliser, le taux de compression peut differer. Les algorithme d'encodage sont plus ou moins efficace selon le type de fichier compresser.\\
- Il existe deux types de compression: la compression avec perte et sans perte. La compression sans perte signifie qu'après la décompression, le fichier sera identique au fichier compressé. C'est le plus souvent utilisé sur des documents, des fichiers executables ou des archives. Ces données étant principalement des caractères texte, ils ne peuvent pas etre modifier. Les formats de documentation tel que txt,doc ou pdf sont donc compresser sans perte.  Tant qu'à la compression avec perte, les fichiers décompréssé ne seront pas exactement identique au fichier original mais les informations seront sensiblement les memes. Les types de fichiers utilisés par cette compression sont les images, les sons et les vidéos. Cett technique se repose sur la limitation des sens de l'homme comme la vision et l'audition. L'homme ne pourra donc pas identifier les différences du fichier original que du fichier après décompressage. Les formats de fichiers jpeg, avi ou mp3 sont donc compresser avec pertes. \\(
+ Il existe deux types de compression: la compression avec perte et sans perte. La compression sans perte signifie qu'après la décompression, le fichier sera identique au fichier compressé. C'est le plus souvent utilisé sur des documents, des fichiers executables ou des archives. Ces données étant principalement des caractères texte, ils ne peuvent pas etre modifier. Les formats de documentation tel que txt,doc ou pdf sont donc compresser sans perte.  Tant qu'à la compression avec perte, les fichiers décompréssé ne seront pas exactement identique au fichier original mais les informations seront sensiblement les memes. Les types de fichiers utilisés par cette compression sont les images, les sons et les vidéos. Cett technique se repose sur la limitation des sens de l'homme comme la vision et l'audition. L'homme ne pourra donc pas identifier les différences du fichier original que du fichier après décompressage. Les formats de fichiers jpeg, avi ou mp3 sont donc compresser avec pertes. \\
 Pour chaque technique de compression, il existe plusieurs algorithme de codage.\\
 	\section{Compression sans perte}
 	Parmis les algorithmes sans pertes, il y a les algorithmes tel que Lempei-Ziv où le codage RLE (Run-Length Encoding) qui consistent à remplacer des suites de bits utilisées plusieurs fois dans un même fichier. D'autres algorithme comme l'algorithme de codage Huffman détermine les suites de bit et plus une suite est utilisée souvent, plus la suite qui la replacera sera courte.

@@ -1,0 +1,9 @@
+Liste de programmes/projets a regarder
+
+tarsnap
+
+epitome2 :
+  http://www.openbsd.org/papers/asiabsdcon2010_epitome2/epitome2.html
+
+rsnapshot
+

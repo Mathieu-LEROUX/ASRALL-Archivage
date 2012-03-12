@@ -4,6 +4,8 @@
 \usepackage[francais]{babel}
 \usepackage{graphicx}
 \usepackage{geometry}
+\usepackage{listings}
+\usepackage{listingsutf8}
 \usepackage{color}
 \usepackage{fancyhdr}
 \pagestyle{fancy}
@@ -15,9 +17,15 @@
 \cfoot{Projet tuteuré: Déduplication \\ Licence ASRALL}
 \rfoot{\thepage}
 \renewcommand{\footrulewidth}{2pt}
+\lstset{
+	language=bash,
+	tabsize=2,
+	extendedchars=true,
+	commentstyle=\color{blue}
+}
 \begin{document}
-	\chapter*{Déduplication}
-	La déduplication de données est une technique qui permet de minimiser de l'espace de stockage. Elle consiste à ne pas répliquer les données déjà existantes sur le disque. Un fichier est décomposé sous forme de blocs de données car des fichiers peuvent avoir des blocs en commum. Le mécanisme de déduplication crée une table avec les index de tous les blocs de données des fichiers présents sur le disque. La taille des blocs peut varier selon les mécanismes utilisés mais plus les blocs sont petits, plus il y aura de chance qu'un autre bloc soit identique et donc, plus la déduplication sera efficace. En général, cette taille ne dépasse pas les 128ko.
+	\chapter{Déduplication}
+	La déduplication de données est une technique qui permet de minimiser de l'espace de stockage. Elle consiste à ne pas répliquer les données déja existantes sur le disque. Un fichier est décomposé sous forme de blocs de données car des fichiers peuvent avoir des blocs en commum. Le mécanisme de déduplication crée une table avec les index de tous les blocs de données des fichiers présents sur le disque. La taille des blocs peut varier selon les mécanismes utilisés mais plus les blocs sont petits, plus il y aura de chance qu'un autre bloc soit identique et donc, plus la déduplication sera efficace. En général, cette taille ne dépasse pas les 128ko.
  
  Quand un utilisateur dépose un fichier, le mécanisme crée ses index et regarde s'il n'y a pas des blocs déjà existants. Si des blocs sont similaires alors une simple référence aux blocs déjà existants sera crée. Le schéma ci-dessous montre comment la déduplication fonctionne. Les blocs étant de la même couleur sont considérés identiques.\\
 \includegraphics[width=10cm]{deduplication.jpg}
@@ -29,7 +37,7 @@ Le terme inverse de la déduplication est la réhydratation. Elle fait appel à 
 
 Certain outils comme LessFS mise en relation avec un système de fichiers ZFS permettent de dédupliquer et de compresser les blocs de données. Cela permet de gagner encore plus d'octets sur le disque mais nécessite une consommation mémoire et CPU plus importante.
 
-	\chapter*{ZFS}
+	\chapter{ZFS}
 	\section{Introduction}
 	Le système de fichier ZFS (Zettabyte File System) a été conçu par Sun en 2005 et est sous licence CDDL.  Il n'était disponible que sous Solaris mais est devenu récemment disponible sous linux. Il est l'un des systèmes de fichiers les plus intéressants du marché. En effet, ZFS intègre de nombreux avantages que d'autres n'ont pas. Voici une liste de ses principaux avantages: \\
 	\begin{itemize}
@@ -46,8 +54,9 @@ Certain outils comme LessFS mise en relation avec un système de fichiers ZFS pe
 	\end{itemize}
 	ZFS est un système de fichier 128 bits contrairement aux autres systèmes qui sont de 64 bits. Ainsi ses limites sont de 16 milliards de milliards fois plus autant dire qu'il n'a quasi pas de limite. Afin d'optimiser ses performances, ZFS utilise tout l'espace disponible de la RAM pour créer un énorme cache. Ce procédé s'appelle ARC (Adaptive replacement cache). Il peut poser problème aux autres processus qui testent la mémoire inutilisée avant de ce lancer mais cette mémoire est souvent inutilisée. Il peut être partagé via le réseau avec d'autres systèmes de fichiers comme nfs ou samba. Ainsi même depuis des systèmes qui ne le supporte pas, il sera accessible.\\
 	\section{Stockage}
-	ZFS fonctionne avec un pool. C'est un ensemble de périphériques qui fournissent de l’espace pour le stockage et la duplication des données comme le raid logiciel. \\
+	ZFS fonctionne avec un pool. C'est un ensemble de périphériques qui fournissent de l’espace pour le stockage et la duplication des données comme le raid logiciel ou matériel. Traditionnellement, les systèmes de fichiers classiques étaient restreint à un périphérique par système. Avec la gestion des volumes, il est possible de créer plusieurs systèmes de fichiers sur un périphérique.\\
 	\includegraphics[width=5cm]{volumes_tradicionais.png}\includegraphics[width=7cm]{armazenamento_pooled_zfs.png}\\
+
 	Voici les différentes unités de base de stockage de données :\\
 	\begin{itemize}
 		 \item Disques : entiers ou juste une partition
@@ -56,8 +65,49 @@ Certain outils comme LessFS mise en relation avec un système de fichiers ZFS pe
 		 \item Raid-z : plusieurs disques, variante de RAID-5\\
 	\end{itemize}
 	ZMirror est un miroir classique. Il utilise les mécanismes de checksum pour valider les lectures sur un composant et bascule sur le second s'il détecte une erreur puis corrige le composant défaillant (si possible). Le système Raid-z est similaire au procédé Raid 5. Il utilise les checksums (SHA-256 + fletcher) et repose sur le copy on write : supprime le "write-hole".
-
-	\chapter*{Compression}
+	\section{Garantir la sécurité des données (intégrité, disponibilité)}
+		Avec ZFS, toutes les données et métadonnées sont vérifiées selon un algorithme de somme de contrôle. Lorsque qu'un bloc de données endommagé est détecté, ZFS recupère les données correctes à partir d'une autre copie redondante et répare les données endommagées en les remplaçant par celles de la copie.
+	\section{Snapshots}
+		Un snapshot (ou instantané) est une copie en lecture seul d'un système de fichier ou d'un volume. ZFS permet donc de pouvoir sauvegarder et restaurer l'image du volume désiré. La création d'un instantané est quasi immédiate. Les instantanés utilisent l'espace de stockage du pool. Une seul opération, dite atomique, permet de créer des instantanés récursifs au système désiré. Ils ne sont pas directement accéssible mais peuvent etre clonés, sauvegardés ou restaurés. D'une manière simple et rapide, un instantané peut etre créé, restauré ou supprimé:
+		\begin{lstlisting}[language=ksh,texcl]
+			#creation du snapshot nommé "nomSnapshot" du système de fichier systèmeZFS au sein du pool "pool"
+			zfs snapshot pool/systemeZFS@nomSnapshot
+			#Opération atomique (récursif)
+			zfs snapshot pool/systemeZFS@nomSnapshot 
+			#Instantané "nomSnapshot" supprimé
+			zfs destroy pool/systemeZFS@nomSnapshot 
+			#Restauration de l'instantané "nomSnapshot"
+			zfs rollback pool/systemeZFS@nomSnapshot 
+			#Permet de voir les différences entre les deux instantanés
+			zfs diff pool/systemeZFS@nomSnapshot pool/systemeZFS@nomSnapshot2 
+		\end{lstlisting}
+	\section{Clones}
+		Un clone est un volume ou un système de fichier accessible en écriture dont le contenu initiale est celui de l'instantané qu'il la créer. En effet, les clones ne sont créer que par des instantanés et une dependance se créer entre les deux. Néanmoins, les clones n'héritent pas les propriétés de leur instantané mais peuvent etre modifié via les commandes zfs set et "zfs get. Les commandes ci-dessous permettent de créer un snapshot et de l'utiliser pour créer un clone.
+		\begin{lstlisting}[language=ksh,texcl]
+			# creation du snapshot
+			zfs snapshot pool/systemeZFS@nomSnapshot 
+			# creation du système de fichier /home à l'aide du snapshot
+			zfs clone pool/systemeZFS@nomSnapshot pool/home 
+		\end{lstlisting}
+	\section{Compression}
+		La compression est une option de ZFS. Elle peut etre activer pour chaque systèmes de fichiers et snapshots via l'option compression. Ses valeurs sont soient on, off,lzjb (algorithme tiré de Lempel ziv), gzip et gzip-n. Son taux de compression sera d'environ de 2 suivant le type de données à compresser et l'option choisit. Exemples:
+		\begin{lstlisting}[language=ksh,texcl]
+			# pour le système de fichier
+			zfs set compresison=on pool/systemeZFS 
+			# pour le snapshot
+			zfs set compression=on pool/systemeZFS@nomSnapshot 
+		\end{lstlisting}
+	\section{Quotas et reservation d'espace}
+		ZFS permet de limiter la taille de stockage à un système de fichier via l'option "quota" et permet de réserver un espace à un système de fichier via l'option "reservation". Ces propriétés sont très intéréssantes quand il s'agit de limiter de l'espace disques à des utilisateurs. ZFS préconise de créer un système de fichier par utilisateur qui serait monté au sein du même pool. Il est donc possible de créer des cotas par utilisateurs et par groupes via les options zfs userquotas et zfs groupquotas. Il sera possible de lister l'espace utilisé par utilisateur ou par groupe.Voici quelques exemple d'utilisations :
+		\begin{lstlisting}[language=ksh,texcl]
+			#attribution d'un quota de 10 gigaoctets au système de fichier mat
+			zfs set quota=10G pool/home/mat 
+			#attribution d'un quota de 10 gigaoctets à l'utilisateur mat
+			zfs set userquota@mat=10G pool/home 
+			#attribution de 100 gigaoctets au groupe etudiant
+			zfs set groupquota@etudiant=100G pool/etudiant 
+		\end{lstlisting}
+	\chapter{Compression}
 	Tout comme la déduplication, la compression est une technique qui permet d'économiser de l'espace de stockage. Chaque fichier est constitué d'une succession de millions de bits 0 ou 1. La compression permet de diminuer le nombre de bits que constitue un fichier en changeant la succession de bits de départ. Suivant l'algorithme de codage utilisé, le taux de compression peut différer. Les algorithmes d'encodage sont plus ou moins efficaces selon le type de fichier compressé.\\
  Il existe deux types de compression: la compression avec perte et sans perte. La compression sans perte signifie qu'après la décompression, le fichier sera identique au fichier compressé. C'est le plus souvent utilisé sur des documents, des fichiers exécutables ou des archives. Ces données étant principalement des caractères texte, ils ne peuvent pas être modifiés. Les formats de documentation tels que txt, doc ou pdf sont donc compressés sans perte.  Tant qu'à la compression avec perte, les fichiers décompressés ne seront pas exactement identiques au fichier original mais les informations seront sensiblement les mêmes. Les types de fichiers utilisés par cette compression sont les images, les sons et les vidéos. Cett technique se repose sur la limitation des sens de l'homme comme la vision et l'audition. L'homme ne pourra donc pas identifier les différences entre le fichier original et le fichier après décompressage. Les formats de fichiers jpeg, avi ou mp3 sont donc compressés avec pertes. \\
 Pour chaque technique de compression, il existe plusieurs algorithmes de codage.\\
@@ -102,5 +152,215 @@ Le shéma ci-dessous montre ses étapes de compression et décompression.\\
 	\subsection{Compression basée sur les récurrences fractales de motif}
 		La compression basée sur les récurrences fractales de motif aussi appelée compression fractale est utilisée pour la compression d'image. Son principe est de détecter les récurrences de motifs et de supprimer les informations redondantes de l'image. Plusieurs méthodes existent mais la plus connue est la méthode Jacquin. Deux étapes composent cette méthode. Dans un premier temps, deux segmentations sont réalisées: une segmentation de figure source et destination. Ensuite pour chaque figure Source, une figure destination est cherchée afin de créer un couple pour minimiser une erreur. Cette erreur est le résultat de leur soustraction après avoir dimensionné le couple de manière identique. A ce stade, des transformations comme la rotation peuvent être réalisées.
 		
-         
-\end{document} 
+         \chapter{Mise en place d'un serveur de fichiers}
+		Nous allons mettre en place un serveur de fichiers sur un système de fichiers ZFS pour les nombreux avantages cité ci-dessus. Il ne sera pas possible d'y ajouter des programmes de déduplication comme lessFS et openDedup car lessFS intègre un système de fichier et Opendedup fonctionne avec SDFS. Néanmoins, le système de fichier intègre au même titre que la compression une propriété permettant la déduplication (présente uniquement sur Solaris). Il sera donc question de tester les principales fonctionnalités de ZFS comme la compression, l'intégrité des données (via raid-z), les sauvegardes (via les snapshots) et leurs restaurations. Je créerai ainsi 50 espaces utilisateurs de 1Go chacun où je stockerai divers types de fichiers comme des documents (.odt, .txt, .pdf), des images (jpeg,gif,png) et une base de données mysql. Afin de partager les systèmes de fichiers dédiés aux utilisateurs, ZFS permet d'activer le partage en nfs avec l'option sharenf à on.
+	\section{Création des systèmes de fichiers}	
+	 Nous allons créer un pool de stockage de 60Go en raidz2 qui est équivalent au raid 6. Pour ce faire, on utilisera sept fichiers de 10Go que nous allons créer par la commande ci-dessous :
+		\begin{lstlisting}
+			for i in `seq 0 6`;
+			do dd if=/dev/zero of=./disque_$i bs=1M count=10000;
+			done;
+		\end{lstlisting}
+	Parmi les sept fichiers utilisés, un sera utilisé pour les redondances d'informations du au raidz2. Ensuite, nous allons créer un pool de stockage nommé poolAsrall à l'aide de ces fichiers où seront installer les systèmes de fichiers. Le pool sera installé dans /media/. Voici la commande :
+		\begin{lstlisting}
+			zpool create poolAsrall raidz2 /media/Windows7/disque_{0,1,2,3,4,5,6} -m /media/poolAsrall
+		\end{lstlisting}
+	Puis on va créer un système de fichier /home/ au sein de ce pool et les cinquantes systèmes de fichiers dédiés aux utilisateurs.
+		\begin{lstlisting}
+			zfs create poolAsrall/home
+			for i in `seq 0 49`;
+			do zfs create poolAsrall/home/util_$i;
+			done;
+		\end{lstlisting}
+	Afin de tester la compression de ses systèmes de fichiers, nous allons activer l'option qui sera récursive à tout ses sous systèmes de fichiers. Nous allons tester l'option on,off,lzjb,gzip,gzip-1,gzip-9 pour tout les espaces utilisateurs.
+		\begin{lstlisting}
+			zfs set compression=on poolAsrall/home
+		\end{lstlisting}
+	Puis on va les remplir de 1,42Go de fichiers divers et variés. Pour cela, nous avons copié le contenu de notre dossier Documents qui fait cette taille et qui contient:
+		\begin{itemize}
+			\item 40 pourcents de fichiers textes (sh, php, html, txt,..)
+			\item 30 pourcents d'images (png, gif, jpeg)
+			\item 15 pourcents de pdf
+			\item 15 pourcents d'autres types de fichiers
+		\end{itemize}
+	Par le script suivant, nous allons remplir ces espaces utilisateurs.
+		\begin{lstlisting}
+			for i in `seq 0 24`;
+			do cp -R  /home/mathieu/Documents poolAsrall/home/util_$i;
+			done;
+		\end{lstlisting}
+	Concernant la base de données mysql, il faut changer dans le repertoire de stockage des données dans le fichier /etc/mysql/my.conf puis copier le dossier /var/lib/mysql et le coller dans le dossier ou nous voulons stocker les données. L'essentiel est de garder les droits du dossier originel. \\
+Dans notre test, nous allons créer un système de fichier bin puis mysql où allons stocker les données de la base.
+		\begin{lstlisting}
+			zfs create poolAsrall/bin
+			zfs create poolAsrall/bin/mysql
+			cp -a /var/lib/mysql /media/poolAsrall/bin/mysql
+			cd /media/poolAsrall/bin/mysql && tar -xvf mysql.tgz
+		\end{lstlisting}
+	\section{Etat du système}
+	Nous allons visualiser l'etat du système mise en place. Pour commencer, nous allons regarder l'etat du pool.
+		\begin{lstlisting}
+			zpool status
+		\end{lstlisting}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			pool: poolAsrall
+			 state: ONLINE
+			 scrub: none requested
+			config:
+
+				NAME                          STATE     READ WRITE CKSUM
+				poolAsrall                    ONLINE       0     0     0
+				  raidz2                      ONLINE       0     0     0
+				    /media/Windows7/disque_0  ONLINE       0     0     0
+				    /media/Windows7/disque_1  ONLINE       0     0     0
+				    /media/Windows7/disque_2  ONLINE       0     0     0
+				    /media/Windows7/disque_3  ONLINE       0     0     0
+				    /media/Windows7/disque_4  ONLINE       0     0     0
+				    /media/Windows7/disque_5  ONLINE       0     0     0
+				    /media/Windows7/disque_6  ONLINE       0     0     0
+
+			errors: No known data errors
+		\end{lstlisting}
+		Les disques créés étant situé dans ma partition dédiée à Windows. Par la commande ci-dessous, on peut visualiser l'espace utilisé et libre du pool. Comme aucun quota ou reservation n'a été précisé, les systèmes de fichiers créés à l'interieur du pool utiliserons tous son espace jusqu'à saturation.
+		\begin{lstlisting}
+			zpool list
+		\end{lstlisting}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			NAME         SIZE   USED  AVAIL    CAP  HEALTH  ALTROOT
+			poolAsrall    68G  48,8G  19,2G    71%  ONLINE  -
+		\end{lstlisting}
+	\subsection{Schéma de l'installation}
+		\includegraphics[width=10cm]{shema.jpg}\\
+	Nous allons visualiser l'espace utilisé par chaque système de fichiers.
+		\begin{lstlisting}
+			df -h
+		\end{lstlisting}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			Sys de fichiers      Tail.  Occ. Disp. Occ. Monte sur
+			/dev/sda7              54G   34G   18G  66% /
+			none                  1,5G  332K  1,5G   1% /dev
+			none                  1,5G  116K  1,5G   1% /dev/shm
+			none                  1,5G  244K  1,5G   1% /var/run
+			none                  1,5G     0  1,5G   0% /var/lock
+			none                  1,5G     0  1,5G   0% /lib/init/rw
+			none                   54G   34G   18G  66% /var/lib/ureadahead/debugfs
+			/dev/sda2             187G  149G   39G  80% /media/Windows7
+			/dev/sda5             1,1G  149M  892M  15% /media/b07f0352-66e0-4503-ad13-9c0524b40293
+			poolAsrall             13G   49K   13G   1% /media/poolAsrall
+			poolAsrall/home        13G  102K   13G   1% /media/poolAsrall/home
+			poolAsrall/bin         13G   22M   13G   1% /media/poolAsrall/bin
+			poolAsrall/bin/mysql   13G   22M   13G   1% /media/poolAsrall/bin/mysql
+			poolAsrall/home/util_0
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_0
+			poolAsrall/home/util_1
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_1
+			poolAsrall/home/util_2
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_2
+			poolAsrall/home/util_3
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_3
+			poolAsrall/home/util_4
+					       15G  1,5G   13G  10% /media/poolAsrall/home/util_4
+			poolAsrall/home/util_5
+					       15G  1,5G   13G  10% /media/poolAsrall/home/util_5
+			poolAsrall/home/util_6
+					       15G  1,5G   13G  10% /media/poolAsrall/home/util_6
+			poolAsrall/home/util_7
+					       15G  1,5G   13G  10% /media/poolAsrall/home/util_7
+			poolAsrall/home/util_8
+					       15G  1,5G   13G  10% /media/poolAsrall/home/util_8
+			poolAsrall/home/util_9
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_9
+			poolAsrall/home/util_10
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_10
+			poolAsrall/home/util_11
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_11
+			poolAsrall/home/util_12
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_12
+			poolAsrall/home/util_13
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_13
+			poolAsrall/home/util_14
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_14
+			poolAsrall/home/util_15
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_15
+			poolAsrall/home/util_16
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_16
+			poolAsrall/home/util_17
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_17
+			poolAsrall/home/util_18
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_18
+			poolAsrall/home/util_19
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_19
+			poolAsrall/home/util_20
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_20
+			poolAsrall/home/util_21
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_21
+			poolAsrall/home/util_22
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_22
+			poolAsrall/home/util_23
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_23
+			poolAsrall/home/util_24
+					       15G  1,4G   13G  10% /media/poolAsrall/home/util_24
+			/dev/sda3             125G  116G  8,5G  94% /media/Data
+
+		\end{lstlisting}
+		Le contenu de mon repertoire Documents est de 1,42Go.
+		\subsection{Compression}
+			Les tests sur les différentes compressions ont été fait de cette manière:
+			\begin{itemize}
+				\item poolAsrall/home/util\_0 - 3 -> compression On : 1,39Go
+				\item poolAsrall/home/util\_4 - 8 -> compression Off : 1,42Go
+				\item poolAsrall/home/util\_9 - 13 -> compression lzjb : 1,40Go
+				\item poolAsrall/home/util\_14 - 18 -> compression gzip : 1,36Go
+				\item poolAsrall/home/util\_19 - 21 -> compression gzip-1 : 1,37Go
+				\item poolAsrall/home/util\_22 - 24 -> compression gzip-9 : 1,36Go \\
+			\end{itemize}
+			Nous pouvons constater que la compression à la volée du système de fichiers ZFS permet de gagner environ quatre pourcents grâce à l'algorithme de compression gzip. En effet, contrairement à l'algorithme lzjb qui est tiré de Lempel ziv, gzip compresse grâce à Lempel ziv et Deflate. Le taux de compression peut paraitre assez faible mais ce gain de place sera beaucoup plus élevé sur du contenu textes. De plus, la compression est juste une option parmi les nombreuses que compte ZFS. Malheureusement, la consommation mémoire qui est très élevé pose des problèmes lors du rédémarrage qui parfois, ne réussi à monter tout les systèmes fautes de places mémoires.
+		\subsection{Snapshot et restauration}
+			Sous ZFS, il est possible de faire des snapshots sur tous les systèmes de fichiers d'un pool. Ainsi, il sera possible de sauvegarder séparément les systèmes de fichiers récursivement avec leurs fils ou non. Leurs restaurations se feront elles aussi de manière individuelle. Après avoir réaliser le snapshot désirer, il sera judicieux d'envoyer la sauvegarde sur un support sécurisé. Afin de restaurer la sauvegarde réalisée, il faudra supprimer ce système de fichiers puis le restaurer par la commande "zfs receive". Nous allons réaliser un snapshot du système de fichier mysql, le supprimer et le restaurer par les commandes suivantes:
+		\begin{lstlisting}[language=ksh,texcl]
+			# Création du snapshot
+			zfs snapshot poolAsrall/bin/mysql@snapMysql.snap
+			# Sauvegarde du snapshot
+			zfs send poolAsrall/bin/mysql@snapMysql.snap > /home/mathieu/Documents/snapMysql.snap
+			# Suppression du système de fichier poolAsrall/bin/mysql
+			zfs destroy poolAsrall/bin/mysql
+			# Restauration de la sauvegarde
+			zfs receive poolAsrall/bin/mysql < /home/mathieu/Documents/snapMysql.snap
+			# Changement du point de montage car celui par défaut sera son nom
+			zfs mountpoint=/media/poolAsrall/bin/mysql poolAsrall/bin/mysql 
+		\end{lstlisting}
+		
+		Après m'être connecter à une base de données mysql nommé wiki, j'ai créé et sauvegardé un snapshot du système poolAsrall/bin/mysql qui contenait les données de mysql. La sauvegarde ayant pour nom snapMysql.snap, et aura la même taille que le système de fichier sauvegardé. Après avoir supprimé ce système, je l'ai donc restaurer via la sauvegarde. La connexion à cette base se refait parfaitement, ainsi que l'accés à ces données. \\
+		Nous allons tester la sauvegarde incrémentale de zfs en insérant une ligne dans la base wiki et en comparant avec l'ancien snapshot :\\
+		\begin{lstlisting}[language=ksh,texcl]
+			# Ajout d'une ligne dans la base mysql "wiki"
+			# Création du second snapshot
+			zfs snapshot poolAsrall/bin/mysql@snapMysql2.snap
+			# Enregistrement de la difference entre les deux snapshots
+			zfs send -i poolAsrall/bin/mysql@snapMysql.snap poolAsrall/bin/mysql@snapMysql2.snap > diff.snap
+			# Taille du snapShot snapMysql.snap soit 42Mo
+			ls -ali snapMysql.snap
+		\end{lstlisting}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			1591678 -rw-r--r-- 1 root root 44766176 2012-03-11 16:53 ../snapMysql.snap
+		\end{lstlisting}
+		\begin{lstlisting}[language=ksh,texcl]
+			# Taille de l'incrément diff.snap soit 1.1Mo
+			ls -ali diff.snap
+		\end{lstlisting}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			1582651 -rw-r--r-- 1 root root 1137672 2012-03-12 22:23 diff.snap
+		\end{lstlisting}
+		Comme précédemment, nous allons supprimer le système de fichier poolAsrall/bin/mysql avant de pouvoir le restaurer via le snapShot et l'incrément. Avant de pouvoir restaurer un incrément, il faut d'abord réaliser un rollback depuis le snapshot. La commande zfs rollback permet, comme son nom l'indique, de reoturner aux données d'un snapshot donné.
+		\begin{lstlisting}[language=ksh,texcl]
+			# Destruction du système de fichier
+			zfs destroy poolAsrall/bin/mysql
+			# Restauration du snapshot
+			zfs receive poolAsrall/bin/mysql < /home/mathieu/Documents/snapMysql.snap
+			# Retour au snapshot
+			zfs rollback poolAsrall/bin/mysql@snapMysql.snap
+			# Insertion de l'increment au système
+			zfs receive poolAsrall/bin/mysql < diff.snap
+		\end{lstlisting}		
+		
+\end{document} 	

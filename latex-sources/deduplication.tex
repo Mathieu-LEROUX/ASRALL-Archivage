@@ -152,7 +152,7 @@ Le shéma ci-dessous montre ses étapes de compression et décompression.\\
 	\subsection{Compression basée sur les récurrences fractales de motif}
 		La compression basée sur les récurrences fractales de motif aussi appelée compression fractale est utilisée pour la compression d'image. Son principe est de détecter les récurrences de motifs et de supprimer les informations redondantes de l'image. Plusieurs méthodes existent mais la plus connue est la méthode Jacquin. Deux étapes composent cette méthode. Dans un premier temps, deux segmentations sont réalisées: une segmentation de figure source et destination. Ensuite pour chaque figure Source, une figure destination est cherchée afin de créer un couple pour minimiser une erreur. Cette erreur est le résultat de leur soustraction après avoir dimensionné le couple de manière identique. A ce stade, des transformations comme la rotation peuvent être réalisées.
 		
-         \chapter{Mise en place d'un serveur de fichiers}
+         \chapter{Mise en place d'un serveur de fichiers ZFS + NFS}
 		Nous allons mettre en place un serveur de fichiers sur un système de fichiers ZFS pour les nombreux avantages cité ci-dessus. Il ne sera pas possible d'y ajouter des programmes de déduplication comme lessFS et openDedup car lessFS intègre un système de fichier et Opendedup fonctionne avec SDFS. Néanmoins, le système de fichier intègre au même titre que la compression une propriété permettant la déduplication (présente uniquement sur Solaris). Il sera donc question de tester les principales fonctionnalités de ZFS comme la compression, l'intégrité des données (via raid-z), les sauvegardes (via les snapshots) et leurs restaurations. Je créerai ainsi 50 espaces utilisateurs de 1Go chacun où je stockerai divers types de fichiers comme des documents (.odt, .txt, .pdf), des images (jpeg,gif,png) et une base de données mysql. Afin de partager les systèmes de fichiers dédiés aux utilisateurs, ZFS permet d'activer le partage en nfs avec l'option sharenf à on.
 	\section{Création des systèmes de fichiers}	
 	 Nous allons créer un pool de stockage de 60Go en raidz2 qui est équivalent au raid 6. Pour ce faire, on utilisera sept fichiers de 10Go que nous allons créer par la commande ci-dessous :
@@ -172,7 +172,7 @@ Le shéma ci-dessous montre ses étapes de compression et décompression.\\
 			do zfs create poolAsrall/home/util_$i;
 			done;
 		\end{lstlisting}
-	Afin de tester la compression de ses systèmes de fichiers, nous allons activer l'option qui sera récursive à tout ses sous systèmes de fichiers. Nous allons tester l'option on,off,lzjb,gzip,gzip-1,gzip-9 pour tout les espaces utilisateurs.
+	Afin de tester la compression de ses systèmes de fichiers, nous allons activer l'option qui sera récursive à tout ses sous systèmes de fichiers. Nous allons tester l'option on, off, lzjb, gzip, gzip-1, gzip-9 pour tout les espaces utilisateurs.
 		\begin{lstlisting}
 			zfs set compression=on poolAsrall/home
 		\end{lstlisting}
@@ -189,7 +189,7 @@ Le shéma ci-dessous montre ses étapes de compression et décompression.\\
 			do cp -R  /home/mathieu/Documents poolAsrall/home/util_$i;
 			done;
 		\end{lstlisting}
-	Concernant la base de données mysql, il faut changer dans le repertoire de stockage des données dans le fichier /etc/mysql/my.conf puis copier le dossier /var/lib/mysql et le coller dans le dossier ou nous voulons stocker les données. L'essentiel est de garder les droits du dossier originel. \\
+	Concernant la base de données mysql, il faut changer le repertoire de stockage des données dans le fichier /etc/mysql/my.conf puis copier le dossier /var/lib/mysql et le coller dans le dossier où nous voulons stocker les données. L'essentiel est de garder les droits du dossier original. \\
 Dans notre test, nous allons créer un système de fichier bin puis mysql où allons stocker les données de la base.
 		\begin{lstlisting}
 			zfs create poolAsrall/bin
@@ -303,7 +303,6 @@ Dans notre test, nous allons créer un système de fichier bin puis mysql où al
 			/dev/sda3             125G  116G  8,5G  94% /media/Data
 
 		\end{lstlisting}
-		Le contenu de mon repertoire Documents est de 1,42Go.
 		\subsection{Compression}
 			Les tests sur les différentes compressions ont été fait de cette manière:
 			\begin{itemize}
@@ -315,7 +314,7 @@ Dans notre test, nous allons créer un système de fichier bin puis mysql où al
 				\item poolAsrall/home/util\_22 - 24 -> compression gzip-9 : 1,36Go \\
 			\end{itemize}
 			Nous pouvons constater que la compression à la volée du système de fichiers ZFS permet de gagner environ quatre pourcents grâce à l'algorithme de compression gzip. En effet, contrairement à l'algorithme lzjb qui est tiré de Lempel ziv, gzip compresse grâce à Lempel ziv et Deflate. Le taux de compression peut paraitre assez faible mais ce gain de place sera beaucoup plus élevé sur du contenu textes. De plus, la compression est juste une option parmi les nombreuses que compte ZFS. Malheureusement, la consommation mémoire qui est très élevé pose des problèmes lors du rédémarrage qui parfois, ne réussi à monter tout les systèmes fautes de places mémoires.
-		\subsection{Snapshot et restauration}
+		\subsection{Snapshots et restaurations de ZFS}
 			Sous ZFS, il est possible de faire des snapshots sur tous les systèmes de fichiers d'un pool. Ainsi, il sera possible de sauvegarder séparément les systèmes de fichiers récursivement avec leurs fils ou non. Leurs restaurations se feront elles aussi de manière individuelle. Après avoir réaliser le snapshot désirer, il sera judicieux d'envoyer la sauvegarde sur un support sécurisé. Afin de restaurer la sauvegarde réalisée, il faudra supprimer ce système de fichiers puis le restaurer par la commande "zfs receive". Nous allons réaliser un snapshot du système de fichier mysql, le supprimer et le restaurer par les commandes suivantes:
 		\begin{lstlisting}[language=ksh,texcl]
 			# Création du snapshot
@@ -361,6 +360,56 @@ Dans notre test, nous allons créer un système de fichier bin puis mysql où al
 			zfs rollback poolAsrall/bin/mysql@snapMysql.snap
 			# Insertion de l'increment au système
 			zfs receive poolAsrall/bin/mysql < diff.snap
-		\end{lstlisting}		
-		
+		\end{lstlisting}	
+		\subsection{Rsnapshot}
+		\subsubsection{Introduction}
+		Rsnapshot est un logiciel libre qui permet de réaliser des sauvegardes et restaurations. Ces sauvegardes sont incrémentales: si elles sont réalisées tout les jours et qu'elles contiennent des fichiers identiques alors des liens en durs seront fait de cette sauvegarde à la sauvegarde précédente. Le nom des sauvegardes auront le noms de l'option de l'intervalle (hourly.x, daily.x, monthly.x et yearly.x) avec x le numéro de la sauvegarde. La sauveagrde la plus récente portant le numéro 0, et dès qu'une nouvelle sauvegarde sera réalisée alors la sauvegarde 0 deviendra 1 et ainsi de suite. 
+		\subsubsection{Installation et configuration}
+		On peut l'installer via le gestionnaire de paquet:
+		\begin{lstlisting}
+			sudo apt-get install rsnapshot
+		\end{lstlisting}
+		Rsnapshot n'a qu'un fichier de configuration /etc/rsnapshot.conf où est précisé le répertoire de destination des sauvegardes, les emplacements à sauvegarder, les scripts à éxécuter ou la périodicité des sauvegardes à éxécuter. Rsnapshot n'a pas prévu un traitement spécifique pour la sauvegarde des bases de données. Ainsi, il utilise les programmes propres aux sauvegardes de bases de données comme pg\_dumpall pour postgresql et mysqldump pour mysql. Des scripts pour l'utilisation de ces programmes sont mis à disposition dans un des dossiers sources de rsnapshot. Ils contiennent deux lignes: l'une pour utiliser le programme propre de sauvegarde de la base de données et l'autres pour changer les droits du fichier résultant. Dans mon cas, je vais donc sauvegarder ma base mysql via ce script. Voici les principales configurations du fichier rsnapshot.conf .
+		\begin{lstlisting}[language=ksh,texcl]
+			# Spécification du répertoire de destination des sauvegardes
+			snapshot_root   /home/mathieu/.snapshots/
+			#Pour utiliser les sauvegardes via ssh
+			cmd_ssh        /path/to/ssh
+			# Spécification de l'intervalles des sauvegardes
+			interval        hourly  6
+			interval        daily   7
+			# Spécification du repertoire à sauvegarder et de l'emplacement dans le repertoire de destination
+			backup  /media/poolAsrall/home/util_0           localhost/home/
+			# Spécification du script à executer et de l'emplacement dans le repertoire de destination
+			backup_script /usr/local/bin/backup_mysql.sh localhost/mysql/
+		\end{lstlisting}
+		\subsubsection{Sauvegardes}
+		Afin d'automatiser la sauvegarde, il faudra ajouter le lancement de rsnapshot dans le cron. Dans l'exemple suivant, une sauvegarde est réalisée toutes les 4h et tout les jours à 23h.
+		\begin{lstlisting}
+			crontab -e
+		\end{listing}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			0 */4 * * * /usr/local/bin/rsnapshot hourly
+			30 23 * * * /usr/local/bin/rsnapshot daily
+		\end{lstlisting}
+		Pour tester rsnapshot, nous avons éxécuter la commande "/usr/bin/rsnapshot hourly" trois fois de suite. La première fois, la sauvegarde mettra quelques dizaines de secondes à se terminer alors que les sauvegardes suivantes ne mettrons que deux à trois secondes. Pourtant, la taille des dossiers créés sera la même. En effet, les dossiers sauvegardés n'étant pas modifier entre les sauvegardes, juste des liens en durs seront éffectuer de la première sauvegarde aux suivantes.
+		\begin{lstlisting}[texcl]
+			# on test l'espace utilisé par le dossier de sauvegarde .snapshots/
+			du -hs .snapshots/
+		\end{lstlisting}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			1,5G	.snapshots/
+		\end{lstlisting}
+		La taille du dossier de l'espace utilisateur util\_0 de ZFS fait toujours 1,42Go. On peux constater que l'espace du dossier .snapshots/ est lègerement plus volumineux car il contient aussi la sauvegarde des bases mysql. Voyons le contenu de ce dossier et l'espace utilisé pour chacun des sous-dossiers hourly.
+		\begin{lstlisting}
+			du -hs .snapshots/*
+		\end{lstlisting}
+		\begin{lstlisting}[backgroundcolor=\color{yellow}]
+			1,5G	./hourly.0
+			868K	./hourly.1
+			868K	./hourly.2
+		\end{lstlisting}
+		Comme on peux le constater, l'espace de la sauvegarde la plus récente contient les données et les anciennes sauvegardes font justes des liens vers ces fichiers. A chaque modification d'un de ses fichiers, la réécriture du fichier entier sera effectué.
+		\subsubsection{Restaurations}
+			Avec rsnapshot, il n'y a pas de façon automatique incorporé pour restaurer des fichiers ou des bases de données. Il faudra donc effectuer les restauration manuellement en se déplaçant dans l'arborescence des sauvegardes et puis, en choisissant le ou les fichiers à restaurer. Afin de partager les sauvegardes avec NFS, il faudra créer un repertoire de sauvegarde propres à chaque utilisateurs avec des droits de lecture où ils pourront choisir leurs fichiers sans les modifier,et les rapatrier à l'emplacement désiré. Concernant les bases de données, on pourra les restaurer en utilisant, de la meme manière que pour leurs sauvegardes, les programmes propres aux SGBD.
 \end{document} 	

@@ -4,6 +4,8 @@
 \usepackage[francais]{babel}
 \usepackage{graphicx}
 \usepackage{geometry}
+\usepackage{listings}
+
 
 
 
@@ -38,7 +40,7 @@ OpenVZ est une base de Virtuozzo est un logiciel commercial développé par SWso
 
 \subsection{KVM}
 KVM permet la virtualisation de tout système d'exploitation sur des processeurs d'architectures x86 disposant des technologies Intel VT ou AMD-V.
-KVM a lieu en tant que module du noyau Linux, ce module exporte un périphérique appelé / dev / kvm permet un mode d'hôtes en plus d'autres modes d'utilisation traditionnels qui prend en charge le noyau. Dans un arbre traditionnel / dev dispositifs sont communs à tous les processus dans l'espace utilisateur, mais dans / dev / kvm à chaque processus qui est lancé est associé à un mappage de périphérique différent.
+KVM a lieu en tant que module du noyau Linux, ce module exporte un périphérique appelé /dev/ kvm permet un mode d'hôtes en plus d'autres modes d'utilisation traditionnels qui prend en charge le noyau. Dans un arbre traditionnel /dev dispositifs sont communs à tous les processus dans l'espace utilisateur, mais dans /dev/ kvm à chaque processus qui est lancé est associé à un mappage de périphérique différent.
 Cela garantit une isolation entre les machines virtuelles. Lorsque le module est installé KVM, le noyau Linux devient un hyperviseur. Un hyperviseur peut exploiter tous les avantages d'un noyau Linux standard.
 Utilisation de systèmes d'exploitation invités KVM peut lancer dans l'espace utilisateur. Chaque système d'exploitation invité est un processus distinct au sein du système d'exploitation hôte. Ci-dessus mais en dessous des systèmes d'exploitation invités il ya une couche très mince (QEMU dans ce cas), qui est l'interface pour la gestion, le contrôle et la configuration des machines virtuelles.
 
@@ -68,23 +70,91 @@ Système requis:
 Carte-mère et BIOS compatible Intel VT/AMD-V (pour le support de la virtualisation par KVM)
 \end{itemize}
 
-\subsubsection{Installation Proxmox VE}
-La configuration la plus important au commence de l'installation.
-\begin{figure} [h]
-\begin {center}
-\includegraphics[width=0.5\textwidth]{img/installation.png}
+\subsubsection{Installation Proxmox VE}\\
+La configuration la plus important au commence de l'installation.\\
+\includegraphics[width=0.5\textwidth]{img/installation.png}\\
 \caption{Configuration du réseau }
-\end {center}
-\end{figure}
-
-Proxmox VE met à disposition une interface d’adminsitration web, pour s’y connecter, entrez l’adresse IP de la machine ou une URL y pointant. Une fois loggué on arrive sur la fenêtre suivante :
-
-\begin{figure} [h]
-\begin {center}
-\includegraphics[width=0.5\textwidth]{img/premiere.png}
-\caption{Fenêtre aprés de se logguer. }
-\end {center}
-\end{figure}
 
 
+Proxmox VE met à disposition une interface d’adminsitration web, pour s’y connecter, entrez l’adresse IP de la machine ou une URL y pointant. Une fois loggué on arrive sur la fenêtre suivante:\\
+\includegraphics[width=0.5\textwidth]{img/premiere.png}\\
+\caption{Fenêtre aprés de se logguer. }\\
+
+\\
+Pour créer une machine virtuelle on lance l'option "Create VM" et on met tous les paramètres pour la nouvelle machine (système d'exploitation, disque dur, mémoire, processeur interface réseau).\\
+\includegraphics[width=0.5\textwidth]{img/creation-VM.png}\\
+\caption{Un résumé d'une configuration d'une VM. }\\
+
+
+
+
+\subsubsection{Sauvegarde et restauration d'une VM}
+
+Vzdump permet de sauvegarder et de restaurer des VM, il est un utilitaire pour prendre des instantanés (snapshots) compatibles de fonctionnement OpenVZ conteneurs (et des machines virtuelles KVM, si nous utilisons VE Proxmox). C'est un script PERL basé sur les commandes tar, gzip, rsync, lvm et vzctl. Il crée une archive tar de la zone privée du conteneur, qui comprend également les fichiers de configuration CT. Il y a plusieurs façons d'assurer la cohérence: Arrêter le CT lors de la sauvegarde (temps d'arrêt très long), utiliser rsync et suspend / commencer (temps d'arrêt minimal) et l'utilisation de LVM2 (aucun temps d'arrêt). Vzdump stocke la sauvegarde sur le disque dans un fichier unique, ce fichier devrait être stocké à une sauvegarde sur bande pour l'archivage.
+
+
+\subsubsection{Sauvegarder une machine virtuelle arrêtée}
+
+
+Si on a la possibilité d'arrêter le serveur, cette mesure est la meilleure. Le VE est arrêté, sauvegardée, puis redémarré. Cette opération dure quelques minutes et on ne prend aucun risque par rapport à l'intégrité de la sauvegarde.
+
+Pour sauvegarder la machine virtuelle numéro 105, on utilise la commande:
+\begin{lstlisting}
+# vzdump --stop --compress --tmpdir /var/lib/vz/vztmp/ 105
+\end{lstlisting}
+\begin{itemize} 
+   \item --stop stop/start VM si est allumée
+   \item --compress comprime le fichier dump (gzip)
+   \item --tmpdir stocke les fichiers temporaires dans le dossier DIR.  --suspend and --stop
+   \item répertoire où sera stockée la sauvegarde
+   \item id de la machine virtuelle
+\end{itemize}
+Le fichier de sauvegarde compressé vzdump-105.tgz est créé dans le répertoire /var/lib/vz/vzdump par défaut.
+
+\subsubsection{Sauvegarder une machine virtuelle à chaud}
+
+Si la VM doit rester allumé, cas d'un serveur de production, vzdump peut procéder à faire une copie à chaud dont deux solutions sont disponibles.
+
+
+\subsubsection{Sauvegarder à chaud avec une interruption de service}
+
+vzdump procéde en 3 étapes :
+\begin{itemize} 
+   \item Il duplique la VM à chaud, celui restant actif.
+   \item La VM est suspendu et re-synchronisé avec la copie.
+   \item Il reprend la VM suspendu.
+\end{itemize}
+L'interruption de service dure quelques secondes.
+
+\begin{lstlisting}
+# vzdump --suspend --compress --tmpdir /var/lib/vz/vztmp/ 105
+\end{lstlisting}
+\begin{itemize} 
+   \item --suspend suspendre/reprendre la VM lors de l'exécution
+\end{itemize}
+   
+
+\subsubsection{Sauvegarder à chaud sans interruption de service}
+
+Ce type de sauvegarde nécessite l'utilisation de LVM, vzdump fait un snapshot LVM à chaud sans aucune interruption de service.
+Pour cette opération, il doit rester suffisamment d'espace libre sur le volume group pour la création du snapshot.
+
+\begin{lstlisting}
+# vzdump --snapshot --compress --tmpdir /var/lib/vz/vztmp/  101
+\end{lstlisting}
+\begin{itemize} 
+   \item --suspend utilise LVM snapshot lors de l'exécution
+\end{itemize}
+
+\subsubsection{Restaurer une VM clonée}
+
+On utilise une des sauvegardes crées avant.
+\begin{lstlisting}
+# vzrestore /var/lib/vz/dump/vzdump-105.tgz 103
+\end{lstlisting}
+
+On doit reconfigurer les paramètres du réseau au clone car pour l'instant, la machine 103 à la même configuration que la machine 105. 
+\begin{lstlisting}
+# vzctl set 103 --ipdel 192.168.0.105 --ipadd 192.168.0.103  --hostname clone103 --save
+\end{lstlisting}
 \end{document} 
